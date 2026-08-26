@@ -53,6 +53,7 @@ Route::middleware(['auth'])->group(function () {
     // ------------------------------------------
     // Notifications (Dashboard message)
     // ------------------------------------------
+    Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');
     Route::post('/notifications/{id}/read', [\App\Http\Controllers\NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('/notifications/mark-all-read', [\App\Http\Controllers\NotificationController::class, 'markAllRead'])->name('notifications.mark-all-read');
 
@@ -125,8 +126,8 @@ Route::middleware(['auth'])->group(function () {
     // ------------------------------------------
     Route::get('/events/list', [EventController::class, 'index'])->name('events.list');
     Route::get('/events/{id}/ot-details', [EventController::class, 'otDetails'])->name('events.ot-details');
-    Route::get('/events/create', [EventController::class, 'create'])->middleware('role:events.manage')->name('events.create');
-    Route::post('/events/store', [EventController::class, 'store'])->middleware('role:events.manage')->name('events.store');
+    Route::get('/events/create', [EventController::class, 'create'])->name('events.create');
+    Route::post('/events/store', [EventController::class, 'store'])->name('events.store');
     Route::post('/events/{id}/toggle', [EventController::class, 'toggleActive'])->middleware('role:events.manage')->name('events.toggle');
     Route::get('/events/{id}/print', [OvertimeController::class, 'printEventSlip'])->middleware('role:overtime.entry')->name('events.print');
     Route::get('/events/{id}/edit', [EventController::class, 'edit'])->middleware('role:events.manage')->name('events.edit');
@@ -138,6 +139,10 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/events/{id}/recommend', [EventController::class, 'recommend'])->name('events.recommend');
     Route::post('/events/{id}/approve', [EventController::class, 'approve'])->name('events.approve');
     Route::post('/events/{id}/reject', [EventController::class, 'reject'])->name('events.reject');
+    // छुट्टै Event-level Approval गेट (OT भर्नुअघि नै सिफारिस गर्नेले Event Approve गर्ने)
+    Route::post('/events/{id}/approve-creation', [EventController::class, 'approveEventCreation'])->name('events.approveCreation');
+    Route::post('/events/{id}/reject-creation', [EventController::class, 'rejectEventCreation'])->name('events.rejectCreation');
+    Route::post('/events/{id}/resubmit-approval', [EventController::class, 'resubmitEventApproval'])->name('events.resubmitApproval');
 
     // ------------------------------------------
     // User Management Routes
@@ -176,6 +181,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/petrol/months', [PetrolMonthController::class, 'store'])->middleware('role:petrol.months.manage')->name('petrol.months.store');
     Route::delete('/petrol/months/{id}', [PetrolMonthController::class, 'destroy'])->middleware('role:petrol.months.manage')->name('petrol.months.destroy');
     Route::post('/petrol/months/{id}/toggle-status', [PetrolMonthController::class, 'toggleStatus'])->middleware('role:petrol.months.manage')->name('petrol.months.toggleStatus');
+    Route::post('/petrol/months/{id}/extend', [PetrolMonthController::class, 'extendDeadline'])->middleware('role:petrol.months.manage')->name('petrol.months.extend');
+    Route::post('/petrol/months/{id}/clear-extension', [PetrolMonthController::class, 'clearExtension'])->middleware('role:petrol.months.manage')->name('petrol.months.clearExtension');
 
     // ------------------------------------------
     // Petrol Bill Routes
@@ -212,5 +219,25 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/hr-sync/run-employees', [HrSyncController::class, 'runEmployees'])->middleware('role:hr.sync')->name('hr-sync.run-employees');
 Route::middleware(['role:petrol.bills.entry,petrol.bills.manage'])->group(function () {
     // petrol routes...
+
+    });
+    Route::post('/hr-sync/run-holidays', [HrSyncController::class, 'runHolidays'])->name('hr-sync.run-holidays');
+    
+
+Route::get('/debug-hr/leave', function () {
+    $data = HrController::getLeave(4, '2083-01-01', '2083-04-30'); // empId, fromDate, toDate - आफ्नो valid empId/date राख्नुहोस्
+    dd($data);
+});
+
+Route::get('/debug-hr/attendance', function () {
+    $data = HrController::getAttendance('2083-01-01', '2083-04-30'); // empId नदिए सबैको आउँछ
+    dd($data);
+});
+
+Route::get('/debug-hr/holiday', function () {
+    $data = HrController::getHoliday(null, null, '2083'); // fiscalYear दिएर
+    dd($data);
 });
 });
+
+

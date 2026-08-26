@@ -9,12 +9,58 @@
             <h2 class="text-2xl font-bold text-slate-800">Active Events / Projects</h2>
             <p class="text-xs text-slate-500 mt-1">सबै कार्यक्रम / Project हरूको OT claim स्थिति यहाँ हेर्नुहोस्।</p>  
         </div>
-        <a href="{{ route('overtime.create') }}"
-           class="inline-flex items-center justify-center gap-2 bg-slate-700 text-white px-4 py-2.5 rounded-lg font-medium text-xs hover:bg-slate-800 transition shadow-sm">
-            <i class="fas fa-plus-circle"></i>
-            <span>Log General OT (सामान्य प्रयोजन)</span>
-        </a>
+        <div class="flex items-center gap-2">
+            <a href="{{ route('events.create') }}"
+               class="inline-flex items-center justify-center gap-2 bg-purple-600 text-white px-4 py-2.5 rounded-lg font-medium text-xs hover:bg-purple-700 transition shadow-sm">
+                <i class="fas fa-calendar-plus"></i>
+                <span>नयाँ Event दर्ता</span>
+            </a>
+            <a href="{{ route('overtime.create') }}"
+               class="inline-flex items-center justify-center gap-2 bg-slate-700 text-white px-4 py-2.5 rounded-lg font-medium text-xs hover:bg-slate-800 transition shadow-sm">
+                <i class="fas fa-plus-circle"></i>
+                <span>Log General OT (सामान्य प्रयोजन)</span>
+            </a>
+        </div>
     </div>
+
+       {{-- Approved / Unapproved Tabs --}}
+       <span>Event </span><break>
+    <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg w-fit">
+        
+          <a href="{{ route('events.list', ['filter' => 'approved']) }}"
+           class="px-4 py-2 rounded-md text-xs font-semibold transition {{ $filter === 'approved' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
+            Approved <span class="ml-1 inline-flex items-center justify-center bg-emerald-100 text-emerald-700 rounded-full w-5 h-5 text-[10px] font-bold">{{ $approvedCount }}</span>
+        </a>
+         <a href="{{ route('events.list', ['filter' => 'all']) }}"
+           class="px-4 py-2 rounded-md text-xs font-semibold transition {{ $filter === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
+            सबै
+        </a>
+        <a href="{{ route('events.list', ['filter' => 'unapproved']) }}"
+           class="px-4 py-2 rounded-md text-xs font-semibold transition {{ $filter === 'unapproved' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
+            Unapproved <span class="ml-1 inline-flex items-center justify-center bg-amber-100 text-amber-700 rounded-full w-5 h-5 text-[10px] font-bold">{{ $unapprovedCount }}</span>
+        </a>
+      
+       
+    </div>
+
+    {{-- Approved ट्याब भित्रको sub-tab: OT Approved vs Pending (event_approval_status Approved भएका मध्ये workflow_status अनुसार) --}}
+    @if($filter === 'approved')
+     <span>OT </span><break>
+        <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 p-1 rounded-lg w-fit">
+            <a href="{{ route('events.list', ['filter' => 'approved']) }}"
+               class="px-3 py-1.5 rounded-md text-[11px] font-semibold transition {{ !$wfFilter ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
+                सबै 
+            </a>
+            <a href="{{ route('events.list', ['filter' => 'approved', 'wf' => 'ot_approved']) }}"
+               class="px-3 py-1.5 rounded-md text-[11px] font-semibold transition {{ $wfFilter === 'ot_approved' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
+                OT Approved <span class="ml-1 inline-flex items-center justify-center bg-emerald-100 text-emerald-700 rounded-full w-5 h-5 text-[10px] font-bold">{{ $otApprovedCount }}</span>
+            </a>
+            <a href="{{ route('events.list', ['filter' => 'approved', 'wf' => 'pending']) }}"
+               class="px-3 py-1.5 rounded-md text-[11px] font-semibold transition {{ $wfFilter === 'pending' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700' }}">
+                Pending <span class="ml-1 inline-flex items-center justify-center bg-amber-100 text-amber-700 rounded-full w-5 h-5 text-[10px] font-bold">{{ $otPendingCount }}</span>
+            </a>
+        </div>
+    @endif
 
     {{-- Flash messages --}}
     @if(session('success'))
@@ -34,6 +80,7 @@
                         <th class="p-4">Department</th>  
                         <th class="p-4">Date Range</th>  
                         <th class="p-4">Status</th>  
+                        <th class="p-4">Event Approval</th>
                         <th class="p-4">Approval</th>
                         <th class="p-4 text-right">Action</th>  
                     </tr>
@@ -99,6 +146,23 @@
                                 @endif
                             </td>
 
+                            {{-- Event-level Approval गेट (OT entry खुल्ने/नखुल्ने) — workflow_status भन्दा छुट्टै --}}
+                            <td class="p-4 align-top">
+                                @php
+                                    $eaColors = match($event->event_approval_status) {
+                                        'Approved' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                                        'Rejected' => 'bg-rose-50 text-rose-700 border-rose-200',
+                                        default    => 'bg-amber-50 text-amber-700 border-amber-200',
+                                    };
+                                @endphp
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border {{ $eaColors }}">
+                                    {{ $event->event_approval_status ?? 'Pending' }}
+                                </span>
+                                @if($event->event_approval_status === 'Rejected' && $event->event_rejection_reason)
+                                    <p class="text-[10px] text-rose-500 mt-1 max-w-[160px]">{{ $event->event_rejection_reason }}</p>
+                                @endif
+                            </td>
+
                             {{-- Approval Workflow स्थिति --}}
                             <td class="p-4 align-top">
                                 @php
@@ -119,15 +183,56 @@
 
                             <td class="p-4 align-top text-right">
                                 <div class="flex flex-wrap items-center justify-end gap-1.5">
-                                    @if($event->is_active && $event->isEditable())
+                                    @if($event->is_active && $event->can_enter_ot)
                                         <a href="{{ route('overtime.create', ['event_id' => $event->id]) }}"
                                            class="bg-blue-600 text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition shadow-2xs">
                                             Entry Overtime
                                         </a>  
                                     @else
-                                        <span class="bg-slate-100 text-slate-400 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-not-allowed border border-slate-200">
+                                        <span class="bg-slate-100 text-slate-400 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-not-allowed border border-slate-200"
+                                              title="{{ $event->event_approval_status === 'Rejected' ? 'यो कार्यक्रम Reject भएकोले OT Entry बन्द छ' : 'सिफारिस गर्नेले Event Approve नगरेसम्म OT Entry खुल्दैन' }}">
                                             Entry Overtime
                                         </span>  
+                                    @endif
+
+                                    {{-- Event Approval: सिफारिस गर्नेले Event बन्नासाथ Approve/Reject गर्ने (OT भर्नुअघि नै) --}}
+                                    @if($event->can_approve_event_creation)
+                                        <form action="{{ route('events.approveCreation', $event->id) }}" method="POST" class="inline"
+                                              onsubmit="return confirm('के तपाईं यो Event Approve गर्न चाहनुहुन्छ? Approve गरेपछि सबैले यसमा OT Entry गर्न मिल्नेछ।')">
+                                            @csrf
+                                            <button type="submit" class="bg-emerald-600 text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-700 transition shadow-2xs">
+                                                Event Approve
+                                            </button>
+                                        </form>
+                                    @endif
+                                    @if($event->can_reject_event_creation)
+                                        <button type="button" onclick="document.getElementById('event-creation-reject-modal-{{ $event->id }}').style.display='flex'"
+                                                class="bg-rose-600 text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-rose-700 transition shadow-2xs">
+                                            Event Reject
+                                        </button>
+                                        <div id="event-creation-reject-modal-{{ $event->id }}" style="display:none;" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 items-center justify-center p-4">
+                                            <div class="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl text-left border border-slate-100">
+                                                <h3 class="text-sm font-bold text-slate-800 mb-2">❌ Event Reject गर्ने कारण लेख्नुहोस्</h3>
+                                                <form action="{{ route('events.rejectCreation', $event->id) }}" method="POST">
+                                                    @csrf
+                                                    <textarea name="reason" rows="3" class="w-full border border-slate-300 rounded-lg p-2.5 text-xs focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none mb-4" placeholder="अस्वीकृत गर्नुको कारण..." required></textarea>
+                                                    <div class="flex justify-end gap-2">
+                                                        <button type="button" onclick="document.getElementById('event-creation-reject-modal-{{ $event->id }}').style.display='none'"
+                                                                class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-medium transition">रद्द</button>
+                                                        <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition">Reject</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    @endif
+                                    @if($event->can_resubmit_event_approval)
+                                        <form action="{{ route('events.resubmitApproval', $event->id) }}" method="POST" class="inline"
+                                              onsubmit="return confirm('फेरि Event Approval को लागि पठाउने हो?')">
+                                            @csrf
+                                            <button type="submit" class="bg-sky-600 text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-sky-700 transition shadow-2xs">
+                                                फेरि पठाउनुहोस्
+                                            </button>
+                                        </form>
                                     @endif
 
                                     <a href="{{ route('events.print', $event->id) }}" target="_blank"

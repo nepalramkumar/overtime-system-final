@@ -62,10 +62,10 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">स्वीकृत गर्ने (निर्देशनालय प्रमुख)</label>
-                <select name="approver_employee_id" id="approver-select" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                <label class="block text-xs font-semibold text-slate-600 mb-1">स्वीकृत गर्ने (Level १० भन्दा माथि)</label>
+                <select name="approver_employee_id" id="approver-select" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none" required>
                     <option value="">-- छान्नुहोस् --</option>
-                    @foreach($employees as $emp)
+                    @foreach($approvers as $emp)
                         <option value="{{ $emp->id }}" {{ $event->approver_employee_id == $emp->id ? 'selected' : '' }}>
                             {{ $emp->name }} — {{ $emp->position->name ?? '' }} ({{ $emp->department }})
                         </option>
@@ -74,10 +74,10 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">सिफारिस गर्ने</label>
-                <select name="recommender_employee_id" id="recommender-select" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                <label class="block text-xs font-semibold text-slate-600 mb-1">सिफारिस गर्ने (Level ६ भन्दा माथि)</label>
+                <select name="recommender_employee_id" id="recommender-select" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none" required>
                     <option value="">-- छान्नुहोस् --</option>
-                    @foreach($employees as $emp)
+                    @foreach($recommenders as $emp)
                         <option value="{{ $emp->id }}" {{ $event->recommender_employee_id == $emp->id ? 'selected' : '' }}>
                             {{ $emp->name }} — {{ $emp->position->name ?? '' }}
                         </option>

@@ -69,7 +69,7 @@ private function canModifyRecord(OvertimeRecord $record): bool
     if ((int) $record->employee_id === (int) (auth()->user()->employee_id ?? 0)) return true;
 
     if ($record->event_id && $record->event
-        && $record->event->isEditable()
+        && $record->event->canEnterOt()
         && $record->event->created_by
         && (int) $record->event->created_by === (int) auth()->id()) {
         return true;
@@ -130,8 +130,12 @@ public function create(Request $request)
         if (!$selectedEvent || !$selectedEvent->is_active) {
             return redirect()->route('events.list')->with('error', 'यो कार्यक्रम अहिले Disable भएको छ, नयाँ OT Entry गर्न मिल्दैन।');
         }
+        if (!$selectedEvent->canEnterOt()) {
+            return redirect()->route('events.list')->with('error', 'यो कार्यक्रम अझै Event Approval पर्खिरहेको छ, त्यसैले नयाँ OT Entry गर्न मिल्दैन।');
+        }
+        // Event Submit भइसकेपछि (workflow_status Draft मा नरहेपछि) नयाँ OT entry रोक्ने
         if (!$selectedEvent->isEditable()) {
-            return redirect()->route('events.list')->with('error', 'यो कार्यक्रम Submit भइसकेकोले अहिले नयाँ OT Entry गर्न मिल्दैन।');
+            return redirect()->route('events.list')->with('error', 'यो कार्यक्रम पहिले नै Submit भइसकेकोले नयाँ OT Entry गर्न मिल्दैन।');
         }
     }
 
@@ -142,7 +146,6 @@ public function create(Request $request)
 
     return view('overtime.create', compact('employees', 'events', 'selectedEventId', 'canSelectAny', 'lockedEmployee', 'allEmployees'));
 }
-
     public function store(Request $request)
 {
     $validated = $request->validate([
@@ -167,8 +170,12 @@ public function create(Request $request)
         if (!$event || !$event->is_active) {
             return redirect()->back()->with('error', 'यो कार्यक्रम Disable भएको छ, OT Entry गर्न मिल्दैन।');
         }
+        if (!$event->canEnterOt()) {
+            return redirect()->back()->with('error', 'यो कार्यक्रम अझै Event Approval पर्खिरहेको छ, त्यसैले OT Entry गर्न मिल्दैन।');
+        }
+        // Event पहिले नै Submit भइसकेको (workflow Draft मा नरहेको) भए नयाँ OT entry रोक्ने
         if (!$event->isEditable()) {
-            return redirect()->back()->with('error', 'यो कार्यक्रम Submit भइसकेकोले अहिले OT Entry गर्न मिल्दैन।');
+            return redirect()->back()->with('error', 'यो कार्यक्रम पहिले नै Submit भइसकेकोले OT Entry गर्न मिल्दैन।');
         }
         // Event को date range भन्दा बाहिरको मितिमा OT भर्न नदिने
         if ($request->ot_date < $event->start_date || $request->ot_date > $event->end_date) {
@@ -230,8 +237,8 @@ return redirect()->route('overtime.my')
         return redirect()->back()->with('error', 'यो record पहिले नै Verified छ। Edit गर्न पहिले Unverify गर्नुपर्छ।');
     }
 
-    if (!$record->isEditable() || ($record->event_id && !$record->event->isEditable())) {
-        return redirect()->back()->with('error', 'यो OT Record Submit भइसकेकोले (सिफारिस/स्वीकृतिको लागि पठाइसकेकोले) अहिले Edit गर्न मिल्दैन।');
+    if (!$record->isEditable() || ($record->event_id && !$record->event->canEnterOt())) {
+        return redirect()->back()->with('error', 'यो OT Record अहिले Edit गर्न मिल्दैन (Event Approve भइसकेको बेला मात्र OT Edit गर्न मिल्छ, वा Record आफैं Submit भइसकेको छ)।');
     }
 
     $employees = Employee::all();
@@ -248,8 +255,8 @@ return redirect()->route('overtime.my')
             abort(403, 'तपाईं यो record update गर्न पाउनुहुन्न।');
         }
 
-        if (!$oldRecord->isEditable() || ($oldRecord->event_id && !$oldRecord->event->isEditable())) {
-            return redirect()->back()->with('error', 'यो OT Record Submit भइसकेकोले अहिले Edit गर्न मिल्दैन।');
+        if (!$oldRecord->isEditable() || ($oldRecord->event_id && !$oldRecord->event->canEnterOt())) {
+            return redirect()->back()->with('error', 'यो OT Record अहिले Edit गर्न मिल्दैन (Event Approve भइसकेको बेला मात्र OT Edit गर्न मिल्छ, वा Record आफैं Submit भइसकेको छ)।');
         }
 
         // Event date range भन्दा बाहिरको मितिमा update हुन नदिने
@@ -260,12 +267,18 @@ return redirect()->route('overtime.my')
             }
         }
 
-        // १. पुरानो रेकर्ड डिलिट र नयाँ बनाउने (तपाईंको पुरानो logic)
-        OvertimeRecord::where('ot_date', $oldRecord->ot_date)
-                      ->where('employee_id', $oldRecord->employee_id)
-                      ->where('event_id', $oldRecord->event_id)
-                      ->where('purpose_id', $oldRecord->purpose_id)
-                      ->delete();
+        
+
+        // १. पुरानो रेकर्ड डिलिट र नयाँ बनाउने
+        // पहिले यहाँ date+employee_id+event_id+purpose_id ले पुरानो row(s) खोजिन्थ्यो — तर सोही
+        // employee+date मा भएका *अरू छुट्टाछुट्टै* entry हरू पनि यी ४ field मिल्दा गलतीले delete
+        // हुन्थे (data-loss bug)। entry_group ले ठ्याक्कै यही entry का row(s) मात्र लक्षित गर्छ।
+        if ($oldRecord->entry_group) {
+            OvertimeRecord::where('entry_group', $oldRecord->entry_group)->delete();
+        } else {
+            // Defensive fallback (सामान्यतया हुनुहुँदैन, migration ले सबैलाई entry_group दिइसकेको हुन्छ)
+            $oldRecord->delete();
+        }
 
         $employee = Employee::findOrFail($request->employee_id);
         $additionalData = [
@@ -279,13 +292,22 @@ return redirect()->route('overtime.my')
             'recommender_employee_id' => $request->recommender_employee_id ?? $oldRecord->recommender_employee_id,
             'approver_employee_id'    => $request->approver_employee_id ?? $oldRecord->approver_employee_id,
         ];
-        $this->calculator->calculateAndSave($additionalData, $employee);
+        $newRecord = $this->calculator->calculateAndSave($additionalData, $employee);
 
-        // २. अब Tiffin recalculate गर्ने
-        $updatedCount = $this->calculator->recalculateTiffinForEvent($eventId, true);
-        
-        // ३. Verified रेकर्डहरू चेक गर्ने
-        $verifiedCount = OvertimeRecord::where('event_id', $eventId)->where('status', 'Verified')->count();
+        // २. अब Tiffin recalculate गर्ने — यही edit भएको entry (entry_group) का row(s) मात्र,
+        // चाहे Individual होस् वा Event-based, अरू कुनै record होइन। (पहिले Event-based भएमा
+        // recalculateTiffinForEvent() ले त्यो event का *सबै* record छोइदिन्थ्यो, जुन अनावश्यक थियो।)
+        if ($eventId) {
+            $event = Event::find($eventId);
+            $isEligible = $event ? (bool) $event->is_tiffin_eligible : false;
+        } else {
+            $isEligible = true;
+        }
+
+        $updatedCount = $this->calculator->recalculateTiffinForEntryGroup($newRecord->entry_group, $isEligible, true);
+        $verifiedCount = OvertimeRecord::where('entry_group', $newRecord->entry_group)
+            ->where('status', 'Verified')
+            ->count();
 
         $message = "{$updatedCount} वटा OT record को खाजा रकम पुनः गणना गरियो।";
         
@@ -311,8 +333,8 @@ return redirect()->route('overtime.my')
         return redirect()->back()->with('error', 'Verified record हटाउन मिल्दैन। पहिले Unverify गर्नुपर्छ।');
     }
 
-    if (!$record->isEditable() || ($record->event_id && !$record->event->isEditable())) {
-        return redirect()->back()->with('error', 'यो OT Record Submit भइसकेकोले अहिले हटाउन मिल्दैन।');
+    if (!$record->isEditable() || ($record->event_id && !$record->event->canEnterOt())) {
+        return redirect()->back()->with('error', 'यो OT Record अहिले हटाउन मिल्दैन (Event Approve भइसकेको बेला मात्र OT हटाउन मिल्छ, वा Record आफैं Submit भइसकेको छ)।');
     }
 
     $record->delete();
@@ -446,11 +468,16 @@ public function recommend($id)
         return redirect()->back()->with('error', 'यो रेकर्ड अहिले सिफारिसको लागि तयार अवस्थामा छैन।');
     }
 
-    $record->update([
-        'status'         => 'Recommended',
-        'recommended_by' => auth()->id(),
-        'recommended_at' => now(),
-    ]);
+    $fromStatus = $record->status;
+
+    // Event model मा जस्तै direct property assignment + save() — recommended_by/recommended_at
+    // $fillable बाहिर राखिएकोले ->update([...]) (mass assignment) ले यी field silently drop गर्थ्यो
+    $record->status = 'Recommended';
+    $record->recommended_by = auth()->id();
+    $record->recommended_at = now();
+    $record->save();
+
+    \App\Models\OvertimeStatusLog::record($record->id, 'Recommended', $fromStatus, $record->status);
 
     return redirect()->back()->with('success', 'रेकर्ड सिफारिस गरियो, अब स्वीकृतिको लागि पठाइयो।');
 }
@@ -475,11 +502,15 @@ public function verify($id)
         return redirect()->back()->with('error', 'यो रेकर्ड पहिले सिफारिस हुनुपर्छ, त्यसपछि मात्र स्वीकृत गर्न मिल्छ।');
     }
 
+    $fromStatus = $record->status;
+
     $record->update([
         'status'      => 'Verified',
         'verified_by' => auth()->id(),
         'verified_at' => now(),
     ]);
+
+    \App\Models\OvertimeStatusLog::record($record->id, 'Verified', $fromStatus, $record->status);
 
     return redirect()->back()->with('success', 'रेकर्ड सफलतापूर्वक verify भयो!');
 }
@@ -896,15 +927,19 @@ public function reject(Request $request, $id)
         return redirect()->back()->with('error', 'यो रेकर्ड अहिले Reject गर्न मिल्ने अवस्थामा छैन।');
     }
 
+    $fromStatus = $record->status;
+
     // Reject भएपछि सिधा Draft/editable अवस्थामा फर्कने (recommend भइसकेको भए त्यो पनि हट्ने)
-    $record->update([
-        'status'            => 'Rejected',
-        'rejection_reason'  => $request->reason,
-        'rejected_by'       => auth()->id(),
-        'rejected_at'       => now(),
-        'recommended_by'    => null,
-        'recommended_at'    => null,
-    ]);
+    // recommended_by/recommended_at $fillable बाहिर भएकोले (Event को जस्तै) direct property assignment
+    $record->status = 'Rejected';
+    $record->rejection_reason = $request->reason;
+    $record->rejected_by = auth()->id();
+    $record->rejected_at = now();
+    $record->recommended_by = null;
+    $record->recommended_at = null;
+    $record->save();
+
+    \App\Models\OvertimeStatusLog::record($record->id, 'Rejected', $fromStatus, $record->status, $request->reason);
 
     return redirect()->back()->with('success', 'रेकर्ड Reject गरियो, फेरि Edit गर्न मिल्ने भयो।');
 }
@@ -921,12 +956,18 @@ public function unverify($id)
         return redirect()->back()->with('error', 'यो रेकर्ड Verified छैन।');
     }
 
-    // Un-verify भएपछि पूरै Draft मा नभई, स्वीकृतिकर्ताको Queue (Recommended) मा फर्किन्छ
-    $record->update([
-        'status'      => $record->recommended_by ? 'Recommended' : 'Pending',
-        'verified_by' => null,
-        'verified_at' => null,
-    ]);
+    $fromStatus = $record->status;
+
+    // Un-verify भएपछि सधैं Pending मा फर्किन्छ (design अनुसार नै) — सिफारिसकर्ताले फेरि सिफारिस गर्नुपर्छ,
+    // त्यसैले recommended_by/recommended_at पनि यहीं clear गरिन्छ (fillable बाहिर भएकोले direct assignment)
+    $record->status = 'Pending';
+    $record->verified_by = null;
+    $record->verified_at = null;
+    $record->recommended_by = null;
+    $record->recommended_at = null;
+    $record->save();
+
+    \App\Models\OvertimeStatusLog::record($record->id, 'Unverified', $fromStatus, $record->status);
 
     return redirect()->back()->with('success', 'रेकर्ड Unverify गरियो।');
 }

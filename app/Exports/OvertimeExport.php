@@ -27,13 +27,15 @@ class OvertimeExport implements FromCollection, WithHeadings
             if (!is_iterable($records)) continue;
 
             foreach ($records as $rec) {
-           $eventDateRange = $rec->event
+                $eventDateRange = $rec->event
                     ? adToBs($rec->event->start_date) . ' - ' . adToBs($rec->event->end_date)
                     : '-';
 
                 $flattened[] = [
                     'sn'            => $sn++,
-                    'date'          => $rec->ot_date ?? 'N/A',
+                    // FIX: was raw $rec->ot_date (AD). "reports" excel export was
+                    // showing the English date instead of Nepali date — converted below.
+                    'date'          => $rec->ot_date ? adToBs($rec->ot_date) : 'N/A',
                     'employee_code' => $rec->employee->employee_code ?? '-',
                     'name'          => $rec->employee->name ?? 'N/A',
                     'position'      => $rec->employee->position->name ?? 'N/A',

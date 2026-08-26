@@ -164,7 +164,12 @@ class RepairExpenseController extends Controller
         $rows = $this->flattenedRows($fyFilter, $monthFilter, $employeeFilter);
 
         if ($request->has('export') && $request->export === 'excel') {
-            return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\RepairExpenseExport($rows), 'Repair_Expenses_' . date('Ymd') . '.xlsx');
+            // CHANGED: RepairExpenseExport -> RepairExpenseReportExport so the
+            // download now has 2 sheets: detailed report (with Claimed Month
+            // restored) + the new summary sheet ("sheet 2 ma new report").
+            // NOTE: like PetrolBill, $rows here is already the FULL filtered
+            // set (not paginated), so this exports the whole selected FY/month.
+            return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\RepairExpenseReportExport($rows), 'Repair_Expenses_' . date('Ymd') . '.xlsx');
         }
 
         $fyList = RepairExpense::select('fy_year')->distinct()->orderBy('fy_year', 'desc')->pluck('fy_year');

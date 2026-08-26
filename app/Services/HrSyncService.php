@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Http\Controllers\HrController;
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\Holiday;
 use App\Models\Position;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -19,6 +20,7 @@ class HrSyncService
         'employees_created'  => 0,
         'employees_updated'  => 0,
         'users_created'      => 0,
+        'holidays_synced'    => 0,
         'errors'             => [],
     ];
 
@@ -52,6 +54,13 @@ class HrSyncService
     public function runEmployeesOnly(): array
     {
         $this->syncEmployees();
+        return $this->summary;
+    }
+
+    // fiscalYear (BS, जस्तै "2083") दिनुपर्छ, नदिए null - HrController::getHoliday ले fromDate/toDate चाहिन्छ भन्ने अर्थ हुन्छ
+    public function runHolidaysOnly(?string $fiscalYear = null): array
+    {
+        $this->syncHolidays($fiscalYear);
         return $this->summary;
     }
 
@@ -142,6 +151,59 @@ class HrSyncService
         } catch (\Exception $e) {
             $this->logError('Employee list fetch error: ' . $e->getMessage());
         }
+    }
+
+    protected function syncHolidays(?string $fiscalYear = null): void
+    {
+        try {
+            $list = HrController::getHoliday(null, null, $fiscalYear);
+
+            foreach ($list->data ?? [] as $holiday) {
+                $holidayId = $holiday->holidayId ?? null;
+                if (!$holidayId) continue;
+
+                $name      = $holiday->holidayName ?? 'N/A';
+                $startDate = $this->msToDate($holiday->holidayStartDateAD ?? null);
+                $endDate   = $this->msToDate($holiday->holidayEndDateAD ?? null) ?: $startDate;
+
+                if (!$startDate) continue;
+
+                // Multi-day holiday भए range भित्रको हरेक दिनको लागि छुट्टै row (existing table single-date per row हो)
+                $cursor = \Carbon\Carbon::parse($startDate);
+                $end    = \Carbon\Carbon::parse($endDate);
+
+                while ($cursor->lte($end)) {
+                    $adDateStr = $cursor->toDateString();
+                    $bsDateStr = function_exists('adToBs') ? adToBs($adDateStr) : null;
+                    $bsYear    = $bsDateStr ? (int) substr($bsDateStr, 0, 4) : null;
+
+                    Holiday::updateOrCreate(
+                        ['date' => $adDateStr],
+                        [
+                            'name'                 => $name,
+                            'bs_year'              => $bsYear,
+                            'external_holiday_id'  => $holidayId,
+                            'source'               => 'hr_sync',
+                        ]
+                    );
+
+                    $cursor->addDay();
+                }
+
+                $this->summary['holidays_synced']++;
+            }
+        } catch (\Exception $e) {
+            $this->logError('Holiday sync error: ' . $e->getMessage());
+        }
+    }
+
+    // HR API ले AD date लाई epoch milliseconds मा दिन्छ, त्यसलाई Y-m-d मा बदल्ने
+    protected function msToDate($ms): ?string
+    {
+        if (empty($ms)) {
+            return null;
+        }
+        return \Carbon\Carbon::createFromTimestamp(intdiv((int) $ms, 1000))->toDateString();
     }
 
     protected function syncOneEmployee(object|array $emp): void

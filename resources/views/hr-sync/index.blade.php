@@ -33,6 +33,20 @@
         </form>
     </div>
 
+    <div class="border-t pt-4 mb-6">
+        <h3 class="font-semibold text-sm text-slate-700 mb-2">Public Holidays Import</h3>
+        <form action="{{ route('hr-sync.run-holidays') }}" method="POST" onsubmit="return confirm('Holidays Sync गर्ने?')" class="flex items-end gap-2">
+            @csrf
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Fiscal Year (BS) - खाली छोड्न सकिन्छ</label>
+                <input type="text" name="fiscal_year" placeholder="जस्तै 2083" class="border border-slate-300 rounded-lg text-sm px-3 py-2 w-40">
+            </div>
+            <button type="submit" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-4 py-2 rounded-lg text-sm font-medium">
+                Holidays Sync गर्नुहोस्
+            </button>
+        </form>
+    </div>
+
     @if(session('summary'))
         @php $s = session('summary'); @endphp
         <div class="mt-6 border-t pt-6">
@@ -40,6 +54,7 @@
             <div class="grid grid-cols-2 gap-3 text-sm">
                 <div class="bg-blue-50 p-3 rounded"><span class="font-semibold">Departments Synced:</span> {{ $s['departments_synced'] }}</div>
                 <div class="bg-blue-50 p-3 rounded"><span class="font-semibold">Positions Synced:</span> {{ $s['positions_synced'] }}</div>
+                <div class="bg-purple-50 p-3 rounded"><span class="font-semibold">Holidays Synced:</span> {{ $s['holidays_synced'] ?? 0 }}</div>
                 <div class="bg-green-50 p-3 rounded"><span class="font-semibold">नयाँ Employee:</span> {{ $s['employees_created'] }}</div>
                 <div class="bg-yellow-50 p-3 rounded"><span class="font-semibold">Update भएको Employee:</span> {{ $s['employees_updated'] }}</div>
                 <div class="bg-green-50 p-3 rounded"><span class="font-semibold">नयाँ User Account:</span> {{ $s['users_created'] }}</div>

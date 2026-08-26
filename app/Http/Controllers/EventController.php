@@ -62,7 +62,7 @@ class EventController extends Controller
         }
 
         // Submit नहुँदासम्म Event creator वा admin ले यहीं बाटै अरूको OT पनि Edit/Delete गर्न पाउने
-        $canManageOt = $event->isEditable() && ($this->isAdmin() || $this->canSubmit($event));
+        $canManageOt = $event->canEnterOt() && ($this->isAdmin() || $this->canSubmit($event));
 
         $records = OvertimeRecord::with('employee.position')
             ->where('event_id', $event->id)
@@ -102,32 +102,74 @@ class EventController extends Controller
         ]);
     }
 
-    // इभेन्ट लिस्ट हेर्नको लागि
-    public function index()
-    {
-        $events = Event::orderBy('id', 'desc')->get();
+    // इभेन्ट लिस्ट हेर्नको लागि — Approved/Unapproved दुई ट्याब सहित
+public function index(Request $request)
+{
+    $filter = $request->query('filter', 'approved');
+    $wfFilter = $request->query('wf');
 
-        $statusBreakdown = OvertimeRecord::select('event_id', 'status', DB::raw('count(DISTINCT employee_id) as total'))
-            ->whereNotNull('event_id')
-            ->groupBy('event_id', 'status')
-            ->get()
-            ->groupBy('event_id');
+    $query = Event::orderBy('id', 'desc');
+    if ($filter === 'approved') {
+        $query->where('event_approval_status', Event::EA_APPROVED);
 
-        foreach ($events as $event) {
-            $event->status_summary = $statusBreakdown->get($event->id, collect())
-                ->pluck('total', 'status');
-
-            // Workflow action button हरू देखाउने/लुकाउने निर्णयको लागि (view बाट private method access नहुने भएकोले)
-            $event->can_submit    = $event->isEditable() && $this->canSubmit($event);
-            $event->can_recommend = $event->workflow_status === Event::WF_SUBMITTED && $this->isRecommenderOf($event);
-            $event->can_approve   = $event->workflow_status === Event::WF_RECOMMENDED && $this->isApproverOf($event);
-            $event->can_reject    = in_array($event->workflow_status, [Event::WF_SUBMITTED, Event::WF_RECOMMENDED])
-                                        && ($event->can_recommend || $event->can_approve || $this->isAdmin());
-            $event->can_view_details = $this->canViewDetails($event);
+        if ($wfFilter === 'ot_approved') {
+            $query->where('workflow_status', Event::WF_APPROVED);
+        } elseif ($wfFilter === 'pending') {
+            $query->where(function ($q) {
+                $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', Event::WF_APPROVED);
+            });
         }
-
-        return view('events.index', compact('events'));
+    } elseif ($filter === 'unapproved') {
+        $query->where(function ($q) {
+            $q->whereNull('event_approval_status')->orWhere('event_approval_status', '!=', Event::EA_APPROVED);
+        });
     }
+
+    $events = $query->get();
+
+    $approvedCount = Event::where('event_approval_status', Event::EA_APPROVED)->count();
+    $unapprovedCount = Event::where(function ($q) {
+            $q->whereNull('event_approval_status')->orWhere('event_approval_status', '!=', Event::EA_APPROVED);
+        })->count();
+
+    $otApprovedCount = Event::where('event_approval_status', Event::EA_APPROVED)
+        ->where('workflow_status', Event::WF_APPROVED)
+        ->count();
+    $otPendingCount = Event::where('event_approval_status', Event::EA_APPROVED)
+        ->where(function ($q) {
+            $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', Event::WF_APPROVED);
+        })->count();
+
+    $statusBreakdown = OvertimeRecord::select('event_id', 'status', DB::raw('count(DISTINCT employee_id) as total'))
+        ->whereNotNull('event_id')
+        ->groupBy('event_id', 'status')
+        ->get()
+        ->groupBy('event_id');
+
+    foreach ($events as $event) {
+        $event->status_summary = $statusBreakdown->get($event->id, collect())
+            ->pluck('total', 'status');
+
+        $event->can_submit    = $event->isEditable() && $this->canSubmit($event);
+        $event->can_recommend = $event->workflow_status === Event::WF_SUBMITTED && $this->isRecommenderOf($event);
+        $event->can_approve   = $event->workflow_status === Event::WF_RECOMMENDED && $this->isApproverOf($event);
+        $event->can_reject    = in_array($event->workflow_status, [Event::WF_SUBMITTED, Event::WF_RECOMMENDED])
+                                    && ($event->can_recommend || $event->can_approve || $this->isAdmin());
+        $event->can_view_details = $this->canViewDetails($event);
+
+        $event->can_enter_ot = $event->canEnterOt() && $event->isEditable();
+        $event->can_approve_event_creation = $event->event_approval_status === Event::EA_PENDING
+                                    && ($this->isRecommenderOf($event) || $this->isAdmin());
+        $event->can_reject_event_creation = $event->can_approve_event_creation;
+        $event->can_resubmit_event_approval = $event->event_approval_status === Event::EA_REJECTED
+                                    && ((int) $event->created_by === (int) auth()->id() || $this->isAdmin());
+    }
+
+    return view('events.index', compact(
+        'events', 'filter', 'wfFilter', 'approvedCount', 'unapprovedCount',
+        'otApprovedCount', 'otPendingCount'
+    ));
+}
 
     public function toggleActive($id)
     {
@@ -141,9 +183,27 @@ class EventController extends Controller
     // इभेन्ट दर्ता गर्ने फर्म देखाउनको लागि
     public function create()
     {
-        $employees = Employee::where('is_active', true)->orderBy('name')->get();
+        $recommenders = Employee::eligibleRecommenders()->orderBy('name')->get();
+        $approvers = Employee::eligibleApprovers()->orderBy('name')->get();
         $departments = Department::orderBy('name')->get();
-        return view('events.create', compact('employees', 'departments'));
+        return view('events.create', compact('recommenders', 'approvers', 'departments'));
+    }
+
+    // Recommender/Approver को Position Level जाँच्ने (dropdown मा पहिले नै filter गरिएको भए पनि,
+    // form data manually बदलेर पठाइएमा रोक्नको लागि server-side मा पनि double-check)
+    private function validateApprovalLevels(int $recommenderId, int $approverId): ?string
+    {
+        $recommender = Employee::with('position')->find($recommenderId);
+        if (!$recommender || !$recommender->position || (int) $recommender->position->level <= 6) {
+            return 'सिफारिस गर्ने व्यक्ति Level ६ भन्दा माथिको हुनुपर्छ।';
+        }
+
+        $approver = Employee::with('position')->find($approverId);
+        if (!$approver || !$approver->position || (int) $approver->position->level <= 10) {
+            return 'स्वीकृति गर्ने व्यक्ति Level १० भन्दा माथिको हुनुपर्छ।';
+        }
+
+        return null;
     }
 
     // डेटा सेभ गर्नको लागि
@@ -151,27 +211,133 @@ class EventController extends Controller
     {
         $request->validate([
             'event_name' => 'required',
-            'approver_employee_id' => 'nullable|exists:employees,id',
-            'recommender_employee_id' => 'nullable|exists:employees,id',
+            'approver_employee_id' => 'required|exists:employees,id',
+            'recommender_employee_id' => 'required|exists:employees,id',
         ]);
-        
+
+        if ($levelError = $this->validateApprovalLevels((int) $request->recommender_employee_id, (int) $request->approver_employee_id)) {
+            return redirect()->back()->withInput()->with('error', $levelError);
+        }
+
         $data = $request->all();
         $data['is_tiffin_eligible'] = $request->has('is_tiffin_eligible') ? true : false;
 
+        // workflow_status यहाँ छोइँदैन — Draft मै रहन्छ, OT भरिसकेपछि चल्ने Submit→सिफारिस→स्वीकृति
+        // workflow पहिलेकै जस्तै अपरिवर्तित रहन्छ (त्यो पछि मात्र सुरु हुन्छ)
         $event = Event::create($data);
-        // Submit गर्ने अधिकार यही बनाउने ले पाउने भएकोले creator track गर्ने (workflow_status default Draft नै रहन्छ)
         $event->created_by = auth()->id();
+
+        // यो *छुट्टै* Event-level Approval गेट हो — Event बन्नासाथ सिफारिस गर्नेलाई पठाइन्छ,
+        // उसले Approve नगरेसम्म कसैले पनि यसमा OT Entry गर्न पाउँदैन।
+        $event->event_approval_status = Event::EA_PENDING;
         $event->save();
 
-        return redirect()->route('events.list')->with('success', 'कार्यक्रम दर्ता भयो!');
+        if ($recommenderUser = $this->userForEmployee($event->recommender_employee_id)) {
+            $recommenderUser->notify(new \App\Notifications\EventCreatedNotification($event));
+        }
+
+        return redirect()->route('events.list')->with('success', 'कार्यक्रम दर्ता भयो! कार्यक्रम स्वीकृती भए पश्चात OT entry हुनेछ ।।');
+    }
+
+    // सिफारिस गर्नेले Event-level Approval दिने (OT entry खोल्नको लागि, workflow_status सँग सम्बन्ध छैन)
+    public function approveEventCreation($id)
+    {
+        $event = Event::findOrFail($id);
+
+        if (!$this->isRecommenderOf($event) && !$this->isAdmin()) {
+            return redirect()->back()->with('error', 'यो कार्यक्रम Approve गर्ने अधिकार तपाईंलाई छैन।');
+        }
+        if ($event->event_approval_status !== Event::EA_PENDING) {
+            return redirect()->back()->with('error', 'यो कार्यक्रम अहिले Approval पर्खिरहेको अवस्थामा छैन।');
+        }
+
+        $event->event_approval_status = Event::EA_APPROVED;
+        $event->event_approved_by = auth()->id();
+        $event->event_approved_at = now();
+        $event->save();
+
+        if ($creatorUser = \App\Models\User::find($event->created_by)) {
+            $creatorUser->notify(new \App\Notifications\EventApprovedForEntryNotification($event));
+        }
+
+        return redirect()->back()->with('success', 'कार्यक्रम Approve गरियो — अब यसमा सबैले OT Entry गर्न मिल्नेछ।');
+    }
+
+    // सिफारिस गर्नेले Event-level Approval अस्वीकार गर्ने
+    public function rejectEventCreation(Request $request, $id)
+    {
+        $event = Event::findOrFail($id);
+
+        if (!$this->isRecommenderOf($event) && !$this->isAdmin()) {
+            return redirect()->back()->with('error', 'यो कार्यक्रम Reject गर्ने अधिकार तपाईंलाई छैन।');
+        }
+        if ($event->event_approval_status !== Event::EA_PENDING) {
+            return redirect()->back()->with('error', 'यो कार्यक्रम अहिले Approval पर्खिरहेको अवस्थामा छैन।');
+        }
+
+        $request->validate(['reason' => 'required|string|max:500']);
+
+        $event->event_approval_status = Event::EA_REJECTED;
+        $event->event_rejected_by = auth()->id();
+        $event->event_rejected_at = now();
+        $event->event_rejection_reason = $request->reason;
+        $event->save();
+
+        if ($creatorUser = \App\Models\User::find($event->created_by)) {
+            $creatorUser->notify(new \App\Notifications\EventCreationRejectedNotification($event, $request->reason));
+        }
+
+        return redirect()->back()->with('success', 'कार्यक्रम Reject गरियो।');
+    }
+
+    // Reject भएपछि Creator/Admin ले (सच्याएर) फेरि Event Approval को लागि पठाउने
+    public function resubmitEventApproval($id)
+    {
+        $event = Event::findOrFail($id);
+
+        if ((int) $event->created_by !== (int) auth()->id() && !$this->isAdmin()) {
+            return redirect()->back()->with('error', 'तपाईंलाई यो अधिकार छैन।');
+        }
+        if ($event->event_approval_status !== Event::EA_REJECTED) {
+            return redirect()->back()->with('error', 'यो कार्यक्रम Reject भएको अवस्थामा छैन।');
+        }
+
+        $event->event_approval_status = Event::EA_PENDING;
+        $event->event_rejected_by = null;
+        $event->event_rejected_at = null;
+        $event->event_rejection_reason = null;
+        $event->save();
+
+        if ($recommenderUser = $this->userForEmployee($event->recommender_employee_id)) {
+            $recommenderUser->notify(new \App\Notifications\EventCreatedNotification($event));
+        }
+
+        return redirect()->back()->with('success', 'फेरि Event Approval को लागि पठाइयो।');
     }
 
     public function edit($id)
     {
         $event = Event::findOrFail($id);
-        $employees = Employee::where('is_active', true)->orderBy('name')->get();
+        $recommenders = Employee::eligibleRecommenders()->orderBy('name')->get();
+        $approvers = Employee::eligibleApprovers()->orderBy('name')->get();
+
+        // हालको recommender/approver Level threshold पुगेको नभए पनि (जस्तै पुरानो data, वा पछि Level बदलिएको)
+        // dropdown बाट हराउन नदिन थप्ने — नत्र admin ले edit page खोल्दा existing assignment अलपत्र पर्न सक्छ
+        if ($event->recommender_employee_id && !$recommenders->contains('id', $event->recommender_employee_id)) {
+            $current = Employee::with('position')->find($event->recommender_employee_id);
+            if ($current) {
+                $recommenders->push($current);
+            }
+        }
+        if ($event->approver_employee_id && !$approvers->contains('id', $event->approver_employee_id)) {
+            $current = Employee::with('position')->find($event->approver_employee_id);
+            if ($current) {
+                $approvers->push($current);
+            }
+        }
+
         $departments = Department::orderBy('name')->get();
-        return view('events.edit', compact('event', 'employees', 'departments'));
+        return view('events.edit', compact('event', 'recommenders', 'approvers', 'departments'));
     }
 
    public function update(Request $request, $id, OvertimeCalculator $calculator)
@@ -185,9 +351,13 @@ class EventController extends Controller
 
     $request->validate([
         'event_name' => 'required',
-        'approver_employee_id' => 'nullable|exists:employees,id',
-        'recommender_employee_id' => 'nullable|exists:employees,id',
+        'approver_employee_id' => 'required|exists:employees,id',
+        'recommender_employee_id' => 'required|exists:employees,id',
     ]);
+
+    if ($levelError = $this->validateApprovalLevels((int) $request->recommender_employee_id, (int) $request->approver_employee_id)) {
+        return redirect()->back()->withInput()->with('error', $levelError);
+    }
 
     $data = $request->all();
     $data['is_tiffin_eligible'] = $request->has('is_tiffin_eligible') ? true : false;
@@ -255,9 +425,17 @@ class EventController extends Controller
         $event->submitted_at = now();
         $event->save();
 
+        $affected = OvertimeRecord::where('event_id', $event->id)
+            ->whereIn('status', [OvertimeRecord::ST_PENDING, OvertimeRecord::ST_REJECTED])
+            ->pluck('status', 'id');
+
         OvertimeRecord::where('event_id', $event->id)
             ->whereIn('status', [OvertimeRecord::ST_PENDING, OvertimeRecord::ST_REJECTED])
             ->update(['status' => OvertimeRecord::ST_SUBMITTED]);
+
+        foreach ($affected as $recordId => $prevStatus) {
+            \App\Models\OvertimeStatusLog::record($recordId, 'Submitted', $prevStatus, OvertimeRecord::ST_SUBMITTED);
+        }
 
         // सिफारिस गर्नेलाई email + dashboard message
         if ($recommenderUser = $this->userForEmployee($event->recommender_employee_id)) {
@@ -284,6 +462,10 @@ class EventController extends Controller
         $event->recommended_at = now();
         $event->save();
 
+        $affectedIds = OvertimeRecord::where('event_id', $event->id)
+            ->where('status', OvertimeRecord::ST_SUBMITTED)
+            ->pluck('id');
+
         OvertimeRecord::where('event_id', $event->id)
             ->where('status', OvertimeRecord::ST_SUBMITTED)
             ->update([
@@ -291,6 +473,10 @@ class EventController extends Controller
                 'recommended_by' => auth()->id(),
                 'recommended_at' => now(),
             ]);
+
+        foreach ($affectedIds as $recordId) {
+            \App\Models\OvertimeStatusLog::record($recordId, 'Recommended', OvertimeRecord::ST_SUBMITTED, OvertimeRecord::ST_RECOMMENDED);
+        }
 
         // स्वीकृति गर्नेलाई email + dashboard message
         if ($approverUser = $this->userForEmployee($event->approver_employee_id)) {
@@ -317,6 +503,10 @@ class EventController extends Controller
         $event->approved_at = now();
         $event->save();
 
+        $affectedIds = OvertimeRecord::where('event_id', $event->id)
+            ->where('status', OvertimeRecord::ST_RECOMMENDED)
+            ->pluck('id');
+
         OvertimeRecord::where('event_id', $event->id)
             ->where('status', OvertimeRecord::ST_RECOMMENDED)
             ->update([
@@ -324,6 +514,10 @@ class EventController extends Controller
                 'verified_by' => auth()->id(),
                 'verified_at' => now(),
             ]);
+
+        foreach ($affectedIds as $recordId) {
+            \App\Models\OvertimeStatusLog::record($recordId, 'Verified', OvertimeRecord::ST_RECOMMENDED, OvertimeRecord::ST_VERIFIED);
+        }
 
         return redirect()->back()->with('success', 'कार्यक्रम स्वीकृत गरियो। अब यसका OT रेकर्डहरू Report मा देखिनेछन्।');
     }
@@ -366,6 +560,10 @@ class EventController extends Controller
         $event->save();
 
         // यो कार्यक्रम अन्तर्गतका सबै OT record फेरि editable बनाउने (batch)
+        $affected = OvertimeRecord::where('event_id', $event->id)
+            ->whereIn('status', [OvertimeRecord::ST_SUBMITTED, OvertimeRecord::ST_RECOMMENDED])
+            ->pluck('status', 'id');
+
         OvertimeRecord::where('event_id', $event->id)
             ->whereIn('status', [OvertimeRecord::ST_SUBMITTED, OvertimeRecord::ST_RECOMMENDED])
             ->update([
@@ -376,6 +574,10 @@ class EventController extends Controller
                 'recommended_by'    => null,
                 'recommended_at'    => null,
             ]);
+
+        foreach ($affected as $recordId => $prevStatus) {
+            \App\Models\OvertimeStatusLog::record($recordId, 'Rejected', $prevStatus, OvertimeRecord::ST_REJECTED, $request->reason);
+        }
 
         // Submit गर्ने (creator) लाई email + dashboard message
         if ($submitterUser = \App\Models\User::find($submitterUserId)) {

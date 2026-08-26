@@ -7,19 +7,19 @@
                 <!-- Notification Bell -->
                 <?php if (isset($component)) { $__componentOriginaldf8083d4a852c446488d8d384bbc7cbe = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginaldf8083d4a852c446488d8d384bbc7cbe = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.dropdown','data' => ['align' => 'right','width' => 'w-80']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.dropdown','data' => ['align' => 'right','width' => 'w-96','contentClasses' => 'bg-white dark:bg-gray-700']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('dropdown'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['align' => 'right','width' => 'w-80']); ?>
+<?php $component->withAttributes(['align' => 'right','width' => 'w-96','content-classes' => 'bg-white dark:bg-gray-700']); ?>
                      <?php $__env->slot('trigger', null, []); ?> 
                         <button class="relative inline-flex items-center p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none transition ease-in-out duration-150">
                             <i class="fas fa-bell text-xl"></i>
                             <?php if(auth()->user()->unreadNotifications->count() > 0): ?>
-                                <span class="absolute top-0 right-0 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold leading-none text-white bg-rose-600 rounded-full">
+                                <span class="absolute top-0 right-0 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold leading-none text-white bg-rose-600 rounded-full ring-2 ring-white">
                                     <?php echo e(auth()->user()->unreadNotifications->count()); ?>
 
                                 </span>
@@ -28,36 +28,52 @@
                      <?php $__env->endSlot(); ?>
 
                      <?php $__env->slot('content', null, []); ?> 
-                        <div class="max-h-96 overflow-y-auto">
-                            <div class="px-4 py-2 flex items-center justify-between border-b border-gray-100 dark:border-gray-700">
-                                <span class="text-xs font-semibold text-gray-500 uppercase">Notifications</span>
+                        <div class="max-h-[26rem] overflow-y-auto">
+                            <div class="px-4 py-3 flex items-center justify-between border-b border-slate-100 sticky top-0 bg-white z-10">
+                                <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                                    <i class="fas fa-bell text-blue-600"></i> Notifications
+                                </span>
                                 <?php if(auth()->user()->unreadNotifications->count() > 0): ?>
                                     <form method="POST" action="<?php echo e(route('notifications.mark-all-read')); ?>">
                                         <?php echo csrf_field(); ?>
-                                        <button type="submit" class="text-[11px] text-blue-600 hover:underline">सबै Read गर्नुहोस्</button>
+                                        <button type="submit" class="text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:underline">सबै Read गर्नुहोस्</button>
                                     </form>
                                 <?php endif; ?>
                             </div>
-                            <?php $__empty_1 = true; $__currentLoopData = auth()->user()->notifications->take(10); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $notif): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
-                                <form method="POST" action="<?php echo e(route('notifications.read', $notif->id)); ?>">
-                                    <?php echo csrf_field(); ?>
-                                    <button type="submit" class="w-full text-left block px-4 py-2.5 text-sm border-b border-gray-50 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 <?php echo e(is_null($notif->read_at) ? 'bg-blue-50 dark:bg-gray-900' : 'opacity-70'); ?>">
-                                        <div class="flex items-center gap-2">
-                                            <span class="font-medium <?php echo e(is_null($notif->read_at) ? 'text-gray-900 dark:text-gray-100 font-bold' : 'text-gray-500 dark:text-gray-400'); ?>"><?php echo e($notif->data['title'] ?? ''); ?></span>
-                                            <?php if(is_null($notif->read_at)): ?>
-                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-600 text-white">नयाँ</span>
-                                            <?php else: ?>
-                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-gray-200 dark:bg-gray-600 text-gray-500">हेरिसकियो</span>
-                                            <?php endif; ?>
-                                        </div>
-                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><?php echo e($notif->data['message'] ?? ''); ?></div>
-                                        <div class="text-[10px] text-gray-400 mt-1"><?php echo e($notif->created_at->format('Y-m-d h:i A')); ?> &middot; <?php echo e($notif->created_at->diffForHumans()); ?></div>
-                                    </button>
-                                </form>
-                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
-                                <div class="px-4 py-6 text-center text-xs text-gray-400">कुनै Notification छैन</div>
-                            <?php endif; ?>
+                            <div class="divide-y divide-slate-100">
+                                <?php $__empty_1 = true; $__currentLoopData = auth()->user()->notifications->take(3); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $notif): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                                    <?php if (isset($component)) { $__componentOriginal02f98463279f9e817caa1858236acf63 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal02f98463279f9e817caa1858236acf63 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.notification-item','data' => ['notif' => $notif,'compact' => true]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('notification-item'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['notif' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($notif),'compact' => true]); ?>
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal02f98463279f9e817caa1858236acf63)): ?>
+<?php $attributes = $__attributesOriginal02f98463279f9e817caa1858236acf63; ?>
+<?php unset($__attributesOriginal02f98463279f9e817caa1858236acf63); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal02f98463279f9e817caa1858236acf63)): ?>
+<?php $component = $__componentOriginal02f98463279f9e817caa1858236acf63; ?>
+<?php unset($__componentOriginal02f98463279f9e817caa1858236acf63); ?>
+<?php endif; ?>
+                                <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                                    <div class="px-4 py-10 text-center">
+                                        <i class="fas fa-bell-slash text-2xl text-slate-200 mb-2 block"></i>
+                                        <p class="text-xs text-slate-400">कुनै Notification छैन</p>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                         </div>
+                        <a href="<?php echo e(route('notifications.index')); ?>"
+                           class="block text-center text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 py-3 border-t border-slate-100 transition">
+                            सबै Notification हेर्नुहोस् <i class="fas fa-arrow-right text-[10px] ml-1"></i>
+                        </a>
                      <?php $__env->endSlot(); ?>
                  <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>

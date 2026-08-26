@@ -1,0 +1,11 @@
+golive ma garne
+Cron entry मा के लेख्ने
+
+Cron मा plain command मात्र राख्नुहोस् — कुनै flag नै नराखी:
+
+* * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
+
+यो एउटै लाइनले सबै तीनवटा command (petrol:sync-months, petrol:remind-bill-entry, repair:remind-claim) लाई routes/console.php मा हामीले schedule गरेको समयमा (बिना कुनै flag) चलाउँछ। यसैले:
+
+petrol:remind-bill-entry cron बाट चल्दा — सबै pending employee लाई पठाउँछ (किनकि --employee दिइएको छैन)
+यो केवल BS महिनाको १ गते नै चल्छ (किनकि --force दिइएको छैन, र date-check सक्रिय रहन्छ)

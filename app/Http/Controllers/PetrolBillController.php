@@ -19,8 +19,16 @@ class PetrolBillController extends Controller
         }
 
         if ($request->has('export') && $request->export === 'excel') {
+            // NOTE: this already fetches the FULL filtered dataset via ->get(),
+            // not the paginated 20-per-page result below — so the "select
+            // gareko month ko purai janu parcha" concern was already fine,
+            // export scope matches the filter, not the page view.
             $allBills = $query->orderBy('created_at', 'desc')->get();
-            return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\PetrolBillExport($allBills), 'Petrol_Bills_' . date('Ymd') . '.xlsx');
+
+            // CHANGED: PetrolBillExport -> PetrolBillReportExport so the
+            // download now has 2 sheets: detailed report + the new summary
+            // sheet ("sheet 2 ma naya report").
+            return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\PetrolBillReportExport($allBills), 'Petrol_Bills_' . date('Ymd') . '.xlsx');
         }
 
         $bills = $query->orderBy('created_at', 'desc')->paginate(20);

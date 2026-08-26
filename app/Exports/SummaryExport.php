@@ -35,8 +35,11 @@ class SummaryExport implements FromCollection, WithHeadings
                 'position'      => $rec->employee->position->name ?? 'N/A',
                 'event'         => $rec->event->event_name ?? 'सामान्य (General)',
                 'event_dates'   => $eventDateRange,
-                'date_from'     => $rec->date_from ?? 'N/A',
-                'date_to'       => $rec->date_to ?? 'N/A',
+                // FIX: date_from / date_to were raw AD dates (from the MIN()/MAX()
+                // SQL aggregate in OvertimeController::exportSummaryExcel()).
+                // Converted to BS here, same as everywhere else.
+                'date_from'     => $rec->date_from ? adToBs($rec->date_from) : 'N/A',
+                'date_to'       => $rec->date_to ? adToBs($rec->date_to) : 'N/A',
                 'total_hours_hm'      => hoursToHm($rec->total_hours ?? 0),
                 'total_hours_decimal' => $rec->total_hours ?? 0,
                 'total_lunch'   => $rec->total_lunch ?? 0,

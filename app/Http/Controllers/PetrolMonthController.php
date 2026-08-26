@@ -58,13 +58,45 @@ class PetrolMonthController extends Controller
             return redirect()->back()->withInput()->with('error', 'यो Month (' . $validated['month'] . ' - ' . $validated['year'] . ') पहिले नै थपिएको छ। एउटै Month+Year दोहोर्याउन मिल्दैन।');
         }
 
-        PetrolMonth::create([
-            'month'  => $validated['month'],
-            'year'   => $validated['year'],
-            'status' => 1,
-        ]);
+        // अब सामान्यतया Month auto (हरेक १ गते) बनिहाल्छ — यो form मात्र missed/पुरानो महिना
+        // manually थप्नुपर्दा प्रयोग हुन्छ। start_date/end_date पनि उसैगरी auto-compute हुन्छ।
+        PetrolMonth::ensureExists($validated['month'], (int) $validated['year']);
 
         return redirect()->back()->with('success', 'Month सफलतापूर्वक थपियो।');
+    }
+
+    /**
+     * Admin ले कुनै Month को Bill-entry deadline थप गते (default ५ गते भन्दा पर) सम्म बढाउने।
+     * जस्तै: Shrawan लाई डिफल्ट Bhadra ५ को साटो Bhadra ७ सम्म देखाउनुपर्दा, extra_days = 2।
+     */
+    public function extendDeadline(Request $request, $id)
+    {
+        $month = PetrolMonth::findOrFail($id);
+
+        $validated = $request->validate([
+            'extra_days' => 'required|integer|min:1|max:60',
+        ]);
+
+        if (!$month->end_date) {
+            return redirect()->back()->with('error', 'यो Month को डिफल्ट Deadline गणना भएको छैन, Admin लाई सम्पर्क गर्नुहोस्।');
+        }
+
+        $month->extended_end_date = $month->end_date->copy()->addDays($validated['extra_days']);
+        $month->save();
+
+        return redirect()->back()->with('success', $month->month . ' ' . $month->year . ' को Deadline ' . $month->extended_end_date->format('Y-m-d') . ' (AD) सम्म थपियो।');
+    }
+
+    /**
+     * Extension हटाएर फेरि डिफल्ट Deadline (अर्को महिनाको ५ गते) मा फर्काउने।
+     */
+    public function clearExtension($id)
+    {
+        $month = PetrolMonth::findOrFail($id);
+        $month->extended_end_date = null;
+        $month->save();
+
+        return redirect()->back()->with('success', 'Deadline फेरि डिफल्ट (Default) मा फर्काइयो।');
     }
 
     /**

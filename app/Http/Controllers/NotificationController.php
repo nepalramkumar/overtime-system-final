@@ -6,6 +6,13 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
+    // पूरा Notification History — Pagination सहित (dashboard/header मा सबै एकैचोटि नथुप्रियोस् भनेर)
+    public function index()
+    {
+        $notifications = auth()->user()->notifications()->paginate(15);
+        return view('notifications.index', compact('notifications'));
+    }
+
     // एउटा notification click गर्दा read mark गरेर सम्बन्धित page मा पठाउने
     public function markRead($id)
     {

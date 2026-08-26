@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Support\Str;
 use App\Models\OvertimeRecord;
 use App\Models\Event;
 use App\Models\SnackAllowance;
 use App\Models\OfficeShift;
 use App\Models\Holiday;
+use App\Models\OvertimeStatusLog;
 
 class OvertimeCalculator
 {
@@ -51,6 +53,7 @@ class OvertimeCalculator
         }
 
         $baseData = [
+            'entry_group'          => (string) Str::uuid(),
             'employee_id'          => $employee->id,
             'event_id'             => $data['event_id'] ?? null,
             'ot_date'              => $otDate,
@@ -83,6 +86,7 @@ class OvertimeCalculator
                 'tiffin_amount' => $tiffin,
                 'type'          => 'Holiday'
             ]));
+            $this->logCreation($record);
             return $record;
         }
 
@@ -102,6 +106,7 @@ class OvertimeCalculator
                 'tiffin_amount' => $tiffin,
                 'type'          => 'Weekly Off'
             ]));
+            $this->logCreation($record);
             return $record;
         }
 
@@ -158,6 +163,7 @@ class OvertimeCalculator
                 'tiffin_amount' => $rowTiffinAmount,
                 'type'          => $record['type']
             ]));
+            $this->logCreation($created);
 
             if (!$firstCreatedRecord) {
                 $firstCreatedRecord = $created;
@@ -186,6 +192,42 @@ class OvertimeCalculator
         $highestRule = SnackAllowance::orderBy('max_hours', 'desc')->first();
         return $highestRule ? $highestRule->amount : 0;
     }
+    // एउटा specific entry (एउटै entry_group भएका row हरू, चाहे १ वटा वा Before/After Office गरी २ वटा)
+    // को मात्र tiffin पुनः गणना गर्ने — Individual र Event-based दुबैको लागि प्रयोग हुने। $isEligible
+    // event को tiffin-eligibility (event-based भए) वा true (individual भए) क्लर बाट पठाइन्छ।
+    // पहिले Event-based entry edit गर्दा recalculateTiffinForEvent() ले त्यो event का *सबै* record
+    // (अरू employee/date समेत) recalculate गर्थ्यो — एउटा मात्र entry edit गर्दा पनि धेरै वटा
+    // "recalculate भयो" भनेर देखिने confusing message आउँथ्यो। अब ठ्याक्कै त्यही entry मात्र target हुन्छ।
+    public function recalculateTiffinForEntryGroup($entryGroup, $isEligible, $includeVerified = false)
+    {
+        $query = OvertimeRecord::where('entry_group', $entryGroup);
+
+        if (!$includeVerified) {
+            $query->where('status', '!=', 'Verified');
+        }
+
+        $records = $query->get();
+        $updatedCount = 0;
+
+        foreach ($records as $record) {
+            $record->tiffin_amount = $this->calculateTiffin($record->total_hours, $isEligible);
+            $record->save();
+            $updatedCount++;
+        }
+
+        return $updatedCount;
+    }
+
+    private function logCreation(OvertimeRecord $record): void
+    {
+        OvertimeStatusLog::record(
+            $record->id,
+            'Created',
+            null,
+            $record->status
+        );
+    }
+
 public function recalculateTiffinForEvent($eventId, $includeVerified = false)
 {
     // १. इभेन्टको ताजा tiffin eligibility अवस्था पत्ता लगाउने

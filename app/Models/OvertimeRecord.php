@@ -18,7 +18,12 @@ class OvertimeRecord extends Model
     const ST_VERIFIED    = 'Verified';    // = Approved (report मा देखिने अन्तिम स्थिति)
     const ST_REJECTED    = 'Rejected';    // Reject भएपछि फेरि editable
 
+    // Note: workflow-tracking fields (status, verified_by/at, rejected_by/at, rejection_reason,
+    // recommended_by/at) are set by the controller only, via direct property assignment + save()
+    // (same pattern as Event model) — recommended_by/recommended_at are intentionally left OUT of
+    // $fillable so a mass ->update([...]) call can never silently mis-set them from a form.
     protected $fillable = [
+    'entry_group',
     'employee_id',
     'event_id',
     'purpose_id',
@@ -80,6 +85,12 @@ public function purpose()
     public function recommendedByUser()
     {
         return $this->belongsTo(User::class, 'recommended_by');
+    }
+
+    // पूरा audit trail (कस-ले, कहिले, कुन stage मा के गर्‍यो) — history table मा
+    public function statusLogs()
+    {
+        return $this->hasMany(OvertimeStatusLog::class)->orderBy('created_at', 'desc');
     }
 
     // Verified नभएसम्म editable — Submitted/Recommended भएको बेला (Event locked भएको बेला) भने locked

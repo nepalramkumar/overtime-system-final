@@ -23,6 +23,52 @@ class HrController extends Controller
         return HrController::getHrData('hr/leave/' . $empId);
     }
 
+    /**
+     * Debug/exploration ko lagi थपिएको - data structure हेर्न मात्र।
+     * empId, fromDate, toDate diyera specific leave records ल्याउने।
+     */
+    public static function getLeave($empId, $fromDate, $toDate)
+    {
+        $query = http_build_query([
+            'empId'     => $empId,
+            'fromDate'  => $fromDate,
+            'toDate'    => $toDate,
+        ]);
+        return HrController::getHrData('hr/leave?' . $query);
+    }
+
+    /**
+     * empId omit वा 0 दिए सबै employee को attendance आउँछ।
+     */
+    public static function getAttendance($fromDate, $toDate, $empId = null)
+    {
+        $params = [
+            'fromDate' => $fromDate,
+            'toDate'   => $toDate,
+        ];
+        if (!is_null($empId)) {
+            $params['empId'] = $empId;
+        }
+        $query = http_build_query($params);
+        return HrController::getHrData('hr/attendance?' . $query);
+    }
+
+    /**
+     * fromDate/toDate वा fiscalYear (BS) मध्ये एउटा दिने - fiscalYear दिए date range override हुन्छ।
+     */
+    public static function getHoliday($fromDate = null, $toDate = null, $fiscalYear = null)
+    {
+        $params = [];
+        if (!is_null($fiscalYear)) {
+            $params['fiscalYear'] = $fiscalYear;
+        } else {
+            $params['fromDate'] = $fromDate;
+            $params['toDate']   = $toDate;
+        }
+        $query = http_build_query($params);
+        return HrController::getHrData('hr/holiday?' . $query);
+    }
+
     private static function getHrData($path)
     {
         $url = env('API_FETCH', 'https://jul.ican.net.np:12560/icanird/resta/') . $path;

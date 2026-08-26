@@ -98,7 +98,7 @@
                                 <br><span class="text-[11px] text-slate-400">({{ adToBs($data->event->start_date) }} - {{ adToBs($data->event->end_date) }})</span>
                             @endif
                         </td>
-                        <td class="p-3 text-center font-mono text-slate-700">{{ $data->date_from }} - {{ $data->date_to }}</td>
+                        <td class="p-3 text-center font-mono text-slate-700">{{ $data->date_from ? adToBs($data->date_from) : '-' }} - {{ $data->date_to ? adToBs($data->date_to) : '-' }}</td>
                         <td class="p-3 text-center font-mono text-slate-700">{{ hoursToHm($data->total_hours) }}</td>
                         <td class="p-3 text-center font-mono text-slate-700">{{ number_format($data->total_hours, 2) }}</td>
                         <td class="p-3 text-right font-semibold text-slate-900">रु {{ number_format($data->total_lunch, 2) }}</td>

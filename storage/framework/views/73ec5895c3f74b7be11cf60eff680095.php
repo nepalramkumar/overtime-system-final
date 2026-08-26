@@ -155,7 +155,7 @@
                             <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
                                 <tr>
                                     <th class="p-2.5 border-r text-center w-12">सि.नं.</th>
-                                    <th class="p-2.5 border-r text-center">मिति</th>
+                                    <!-- <th class="p-2.5 border-r text-center">मिति</th> -->
                                     <th class="p-2.5 border-r">कर्मचारी कोड</th>
                                     <th class="p-2.5 border-r">कर्मचारी</th>
                                     <th class="p-2.5 border-r">पद</th>
@@ -169,7 +169,7 @@
                                 <?php $__empty_1 = true; $__currentLoopData = $groupedData; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $empId => $empGroup): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
                                 <tr class="hover:bg-slate-50/80 transition">
                                     <td class="p-2.5 border-r text-center text-slate-500"><?php echo e($sn++); ?></td>
-                                    <td class="p-2.5 border-r text-center">-</td>
+                                    <!-- <td class="p-2.5 border-r text-center">-</td> -->
                                     <td class="p-2.5 border-r font-mono"><?php echo e($empGroup['employee']->employee_code ?? '-'); ?></td>
                                     <td class="p-2.5 border-r font-semibold text-slate-800"><?php echo e($empGroup['employee']->name ?? 'N/A'); ?></td>
                                     <td class="p-2.5 border-r text-slate-600"><?php echo e($empGroup['employee']->position->name ?? 'N/A'); ?></td>
